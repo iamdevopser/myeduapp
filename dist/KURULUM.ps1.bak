@@ -1,0 +1,255 @@
+﻿# MyEduApp - Otomatik Kurulum Script'i
+# Bu script runtime'ları kontrol eder, sertifikayı yükler, uygulamayı kurar ve açar
+
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "MyEduApp - Otomatik Kurulum" -ForegroundColor Green
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host ""
+
+# Mevcut dizini al
+$scriptPath = $MyInvocation.MyCommand.Path
+$scriptDir = Split-Path -Parent $scriptPath
+
+# 0. Runtime kontrolü ve yükleme
+Write-Host "[0/5] Runtime gereksinimleri kontrol ediliyor..." -ForegroundColor Yellow
+
+# Visual C++ Redistributable kontrolü
+$vcRedistInstalled = $false
+$vcRedistKeys = @(
+    "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64",
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x64",
+    "HKLM:\SOFTWARE\Microsoft\VisualStudio\15.0\VC\Runtimes\x64",
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\15.0\VC\Runtimes\x64"
+)
+
+foreach ($key in $vcRedistKeys) {
+    if (Test-Path $key) {
+        $vcRedistInstalled = $true
+        break
+    }
+}
+
+if (-not $vcRedistInstalled) {
+    Write-Host "       Visual C++ Redistributable bulunamadi!" -ForegroundColor Red
+    Write-Host "       Indiriliyor ve yukleniyor..." -ForegroundColor Yellow
+    
+    $vcRedistUrl = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+    $vcRedistPath = Join-Path $env:TEMP "vc_redist.x64.exe"
+    
+    try {
+        Write-Host "       Indirme baslatiliyor..." -ForegroundColor Cyan
+        Invoke-WebRequest -Uri $vcRedistUrl -OutFile $vcRedistPath -UseBasicParsing -ErrorAction Stop
+        Write-Host "       Kurulum baslatiliyor (sessiz mod)..." -ForegroundColor Cyan
+        $process = Start-Process -FilePath $vcRedistPath -ArgumentList "/quiet /norestart" -Wait -PassThru
+        if ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010) {
+            Write-Host "       Visual C++ Redistributable yuklendi!" -ForegroundColor Green
+        } else {
+            Write-Host "       UYARI: Kurulum kodu: $($process.ExitCode)" -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "       HATA: Indirme/kurulum basarisiz: $_" -ForegroundColor Red
+        Write-Host "       Lutfen manuel olarak yukleyin:" -ForegroundColor Yellow
+        Write-Host "       https://aka.ms/vs/17/release/vc_redist.x64.exe" -ForegroundColor Cyan
+    }
+} else {
+    Write-Host "       Visual C++ Redistributable yuklu!" -ForegroundColor Green
+}
+
+# Dosya yazma izinleri testi
+Write-Host "       Dosya yazma izinleri test ediliyor..." -ForegroundColor Yellow
+try {
+    $testPath = [Environment]::GetFolderPath("MyDocuments")
+    $testFile = Join-Path $testPath "MyEduAppData\test_write.txt"
+    $testDir = Split-Path $testFile -Parent
+    
+    if (-not (Test-Path $testDir)) {
+        New-Item -ItemType Directory -Path $testDir -Force | Out-Null
+    }
+    
+    "test" | Out-File -FilePath $testFile -Encoding UTF8 -ErrorAction Stop
+    Remove-Item $testFile -Force -ErrorAction SilentlyContinue
+    Write-Host "       Dosya yazma izinleri OK!" -ForegroundColor Green
+} catch {
+    Write-Host "       UYARI: Dosya yazma testi basarisiz: $_" -ForegroundColor Yellow
+    Write-Host "       Uygulama veri klasoru olusturamayabilir!" -ForegroundColor Yellow
+}
+
+Write-Host ""
+
+# Dosya yolları
+$certPath = Join-Path $scriptDir "MyEduApp.cer"
+$msixPath = Join-Path $scriptDir "my_edu_app.msix"
+
+# 1. Sertifika kontrolü ve yükleme
+Write-Host "[1/5] Sertifika yukleniyor..." -ForegroundColor Yellow
+if (Test-Path $certPath) {
+    try {
+        $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($certPath)
+        $store = New-Object System.Security.Cryptography.X509Certificates.X509Store([System.Security.Cryptography.X509Certificates.StoreName]::Root, [System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine)
+        $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+        $store.Add($cert)
+        $store.Close()
+        Write-Host "       Sertifika basariyla yuklendi!" -ForegroundColor Green
+    } catch {
+        Write-Host "       HATA: Sertifika yuklenemedi: $_" -ForegroundColor Red
+        Write-Host "       Lutfen PowerShell'i YONETICI OLARAK calistirin!" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "Devam etmek icin bir tusa basin..." -ForegroundColor Yellow
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        exit 1
+    }
+} else {
+    Write-Host "       HATA: Sertifika dosyasi bulunamadi!" -ForegroundColor Red
+    exit 1
+}
+
+# 2. Eski kurulumu kaldır (varsa) - ÖNCE BUNU YAP
+Write-Host "[2/5] Eski kurulumlar kontrol ediliyor..." -ForegroundColor Yellow
+try {
+    $oldPackage = Get-AppxPackage | Where-Object { $_.Name -like "*myeduapp*" -or $_.PackageFamilyName -like "*myeduapp*" }
+    if ($oldPackage) {
+        Write-Host "       Eski kurulum bulundu, kaldiriliyor..." -ForegroundColor Yellow
+        foreach ($pkg in $oldPackage) {
+            try {
+                Remove-AppxPackage -Package $pkg.PackageFullName -ErrorAction Stop
+                Write-Host "       Eski kurulum kaldirildi: $($pkg.Name)" -ForegroundColor Green
+            } catch {
+                Write-Host "       UYARI: Eski kurulum kaldirilamadi: $($pkg.Name) - $_" -ForegroundColor Yellow
+            }
+        }
+        Start-Sleep -Seconds 3
+    } else {
+        Write-Host "       Eski kurulum bulunamadi." -ForegroundColor Green
+    }
+} catch {
+    Write-Host "       UYARI: Eski kurulum kontrolu basarisiz: $_" -ForegroundColor Yellow
+}
+
+# 3. MSIX kurulumu
+Write-Host "[3/5] Uygulama kuruluyor..." -ForegroundColor Yellow
+if (Test-Path $msixPath) {
+    try {
+        Write-Host "       MSIX dosyasi bulundu: $msixPath" -ForegroundColor Cyan
+        Write-Host "       Kurulum baslatiliyor..." -ForegroundColor Cyan
+        
+        $result = Add-AppxPackage -Path $msixPath -ErrorAction Stop
+        
+        # Kurulum sonrası doğrulama
+        Start-Sleep -Seconds 2
+        $installedPackage = Get-AppxPackage | Where-Object { $_.Name -like "*myeduapp*" -or $_.PackageFamilyName -like "*myeduapp*" }
+        
+        if ($installedPackage) {
+            Write-Host "       Uygulama basariyla kuruldu!" -ForegroundColor Green
+            Write-Host "       Paket adi: $($installedPackage.Name)" -ForegroundColor Cyan
+            Write-Host "       Versiyon: $($installedPackage.Version)" -ForegroundColor Cyan
+        } else {
+            Write-Host "       UYARI: Kurulum tamamlandi ama paket bulunamadi!" -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "       HATA: Kurulum basarisiz!" -ForegroundColor Red
+        Write-Host "       Hata detayi: $_" -ForegroundColor Red
+        
+        # Daha detaylı hata analizi
+        if ($_.Exception.Message -like "*0x800B0100*" -or $_.Exception.Message -like "*signature*") {
+            Write-Host ""
+            Write-Host "       COZUM: Sertifika sorunu tespit edildi." -ForegroundColor Yellow
+            Write-Host "       1. Sertifikanin yuklu oldugundan emin olun" -ForegroundColor Cyan
+            Write-Host "       2. Bilgisayari yeniden baslatin" -ForegroundColor Cyan
+            Write-Host "       3. Tekrar deneyin" -ForegroundColor Cyan
+        } elseif ($_.Exception.Message -like "*0x80073CF3*" -or $_.Exception.Message -like "*already installed*") {
+            Write-Host ""
+            Write-Host "       COZUM: Uygulama zaten kurulu olabilir." -ForegroundColor Yellow
+            Write-Host "       Eski kurulumu kaldirip tekrar deneyin." -ForegroundColor Cyan
+        }
+        
+        Write-Host ""
+        Write-Host "Devam etmek icin bir tusa basin..." -ForegroundColor Yellow
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        exit 1
+    }
+} else {
+    Write-Host "       HATA: MSIX dosyasi bulunamadi: $msixPath" -ForegroundColor Red
+    Write-Host "       Lutfen dist klasorunde my_edu_app.msix dosyasinin oldugundan emin olun." -ForegroundColor Yellow
+    exit 1
+}
+
+# 4. Uygulamayı aç
+Write-Host "[4/5] Uygulama aciliyor..." -ForegroundColor Yellow
+Start-Sleep -Seconds 3
+
+try {
+    $package = Get-AppxPackage | Where-Object { $_.Name -like "*myeduapp*" -or $_.PackageFamilyName -like "*myeduapp*" }
+    if ($package) {
+        Write-Host "       Uygulama paketi bulundu: $($package.Name)" -ForegroundColor Cyan
+        
+        try {
+            $manifest = [xml](Get-AppxPackageManifest $package)
+            $appId = $manifest.Package.Applications.Application.Id
+            $appPath = "shell:AppsFolder\$($package.PackageFamilyName)!$appId"
+            
+            Write-Host "       Uygulama baslatiliyor: $appPath" -ForegroundColor Cyan
+            Start-Process $appPath -ErrorAction Stop
+            Write-Host "       Uygulama acildi!" -ForegroundColor Green
+        } catch {
+            Write-Host "       UYARI: Uygulama otomatik acilamadi: $_" -ForegroundColor Yellow
+            Write-Host "       Alternatif yontem deneniyor..." -ForegroundColor Cyan
+            
+            # Alternatif: Start-Process ile doğrudan paket adını kullan
+            $packageFamilyName = $package.PackageFamilyName
+            Start-Process "shell:AppsFolder\$packageFamilyName!App" -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+        }
+    } else {
+        Write-Host "       HATA: Uygulama paketi bulunamadi!" -ForegroundColor Red
+        Write-Host "       Kurulum basarisiz olmus olabilir." -ForegroundColor Yellow
+        Write-Host "       Lutfen kurulum loglarini kontrol edin." -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "       UYARI: Uygulama acilamadi: $_" -ForegroundColor Yellow
+    Write-Host "       Lutfen Baslat menusunden 'MyEduApp' uygulamasini manuel olarak acin." -ForegroundColor Yellow
+}
+
+Write-Host ""
+Write-Host "[5/5] Kurulum sonrasi kontrol..." -ForegroundColor Yellow
+Start-Sleep -Seconds 3
+
+# Kurulum doğrulama
+$installedPackage = Get-AppxPackage | Where-Object { $_.Name -like "*myeduapp*" -or $_.PackageFamilyName -like "*myeduapp*" }
+
+if ($installedPackage) {
+    Write-Host "       ✓ Uygulama paketi kurulu: $($installedPackage.Name)" -ForegroundColor Green
+    
+    # Process kontrolü
+    Start-Sleep -Seconds 2
+    $processes = Get-Process | Where-Object { 
+        $_.ProcessName -like "*myeduapp*" -or 
+        $_.ProcessName -like "*flutter*" -or
+        $_.MainWindowTitle -like "*MyEduApp*"
+    }
+    
+    if ($processes) {
+        Write-Host "       ✓ Uygulama calisiyor!" -ForegroundColor Green
+        foreach ($proc in $processes) {
+            Write-Host "         Process: $($proc.ProcessName) (PID: $($proc.Id))" -ForegroundColor Cyan
+        }
+    } else {
+        Write-Host "       ! Uygulama process'i henuz baslamadi." -ForegroundColor Yellow
+        Write-Host "         Uygulama arka planda yukleniyor olabilir." -ForegroundColor Cyan
+    }
+} else {
+    Write-Host "       ✗ Uygulama paketi bulunamadi!" -ForegroundColor Red
+    Write-Host "       Kurulum basarisiz olmus olabilir." -ForegroundColor Yellow
+}
+
+Write-Host ""
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "Kurulum tamamlandi!" -ForegroundColor Green
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "NOT: Eger uygulama acilmiyorsa:" -ForegroundColor Yellow
+Write-Host "  1. TEST_UYGULAMA.ps1 script'ini calistirin" -ForegroundColor Cyan
+Write-Host "  2. Event Viewer'da hatalari kontrol edin" -ForegroundColor Cyan
+Write-Host "  3. Bilgisayari yeniden baslatin" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Kapatmak icin bir tusa basin..." -ForegroundColor Yellow
+$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")

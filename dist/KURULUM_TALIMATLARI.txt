@@ -1,0 +1,68 @@
+========================================
+MyEduApp - Kurulum
+========================================
+
+*** TEK TIKLA KURULUM (ONERILEN) ***
+
+  MyEduApp-Setup.exe dosyasina cift tiklayin.
+  UAC penceresinde "Evet" deyin.
+  Sihirbazi takip edin; kurulum otomatik tamamlanir.
+  Ek bir islem yapmaniz gerekmez.
+
+  Gereksinimler (runtime, sertifika vb.) otomatik kontrol edilir
+  ve uygulama kurulup acilir.
+
+
+*** ZIP ILE KURULUM (Alternatif) ***
+
+  Bu klasoru ZIP'leyip dagitiyorsaniz:
+  1. KURULUMU_BASLAT.bat dosyasina cift tiklayin.
+  2. "Evet" ile yonetici izni verin.
+  3. Kurulum otomatik tamamlanir.
+
+
+*** MANUEL KURULUM ***
+
+  Otomatik kurulum calismazsa:
+  1. PowerShell'i YONETICI OLARAK acin.
+  
+  2. ESKI KURULUMU KALDIRIN (varsa):
+     Get-AppxPackage | Where-Object { $_.Name -like '*myeduapp*' } | Remove-AppxPackage
+  
+  3. Sertifikayi yukleyin:
+     Import-Certificate -FilePath "MyEduApp.cer" -CertStoreLocation Cert:\LocalMachine\Root
+  
+  4. MSIX paketini kurun:
+     my_edu_app.msix dosyasina cift tiklayin veya:
+     Add-AppxPackage ".\my_edu_app.msix"
+  
+  5. Baslat menusunden "MyEduApp" uygulamasini acin.
+
+
+*** SORUN GIDERME ***
+
+  Eger uygulama kuruldu ama acilmiyorsa:
+  
+  1. Eski kurulumu tamamen kaldirin:
+     Get-AppxPackage | Where-Object { $_.Name -like '*myeduapp*' } | Remove-AppxPackage
+  
+  2. Bilgisayari yeniden baslatin.
+  
+  3. Kurulumu tekrar deneyin.
+
+
+  Eger "favoriler tablosu bulunamadi" hatasi aliyorsaniz:
+  
+  Bu, eski veritabani dosyasindan kaynaklanir. Cozum:
+  
+  1. VERITABANI_TEMIZLE.ps1 script'ini calistirin (YONETICI OLARAK).
+     - Veritabani dosyasi silinir (veriler kaybolur)
+     - Uygulama yeni veritabani olusturur
+  
+  2. VEYA manuel olarak:
+     PowerShell'i YONETICI OLARAK acin:
+     Remove-Item "$env:USERPROFILE\Documents\MyEduAppData\myeduapp.sqlite" -Force
+  
+  NOT: Bu islem veritabani kayitlarini siler ama dosyalari (PDF, resim vb.) silmez.
+
+========================================
