@@ -3,11 +3,11 @@ import 'package:provider/provider.dart';
 
 import '../data/models/class_model.dart';
 import '../data/models/content_item.dart';
-import '../data/models/content_with_tags.dart';
 import '../data/models/lesson_model.dart';
 import '../data/models/topic_model.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/app_state.dart';
+import '../utils/app_navigation.dart';
 import 'app_viewer_screen.dart';
 
 class GlobalSearchScreen extends StatefulWidget {
@@ -33,8 +33,11 @@ class _GlobalSearchScreenState extends State<GlobalSearchScreen> {
           IconButton(
             icon: const Icon(Icons.home),
             tooltip: strings.t('goHome'),
-            onPressed: () {
-              Navigator.of(context).popUntil((route) => route.isFirst);
+            onPressed: () async {
+              final confirmed = await confirmLeavePage(context);
+              if (confirmed && context.mounted) {
+                popToSessionHome(context);
+              }
             },
           ),
         ],
@@ -106,16 +109,26 @@ class _GlobalSearchScreenState extends State<GlobalSearchScreen> {
     if (classRow == null) {
       return;
     }
-    await state.selectClass(ClassModel.fromMap(classRow));
-    await state.selectLesson(LessonModel.fromMap(lessonRow));
+    state.selectClass(ClassModel.fromMap(Map<String, Object?>.from(classRow)));
+    state.selectLesson(
+      LessonModel.fromMap(Map<String, Object?>.from(lessonRow)),
+      autoSelectFirstUnit: true,
+    );
     if (topicId != null) {
       final topicRow = await state.db.getTopicById(topicId);
       if (topicRow != null) {
-        state.selectTopic(TopicModel.fromMap(topicRow));
+        state.selectTopic(TopicModel.fromMap(
+          Map<String, Object?>.from(topicRow),
+        ));
       }
     }
-    final content = ContentItem.fromMap(contentRow);
-    state.selectContent(ContentWithTags(content: content, tags: const []));
+    final content = ContentItem.fromMap(Map<String, Object?>.from(contentRow));
+    state.selectContent(ContentModel(
+      id: content.id,
+      title: content.name,
+      contentItem: content,
+      tags: const [],
+    ));
     if (context.mounted) {
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const AppViewerScreen()),

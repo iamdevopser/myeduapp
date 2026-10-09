@@ -1,14 +1,25 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../utils/path_utils.dart';
 
+/// Desktop: taşınabilir mod — veriler exe ile aynı dizinde.
+/// Android/iOS: uygulama belgeler dizininde MyEduAppData.
 class AppPaths {
+  Future<String> _dataParentPath() async {
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+      final appDir = await getApplicationDocumentsDirectory();
+      return appDir.path;
+    }
+    return p.dirname(Platform.resolvedExecutable);
+  }
+
   Future<Directory> getRootDir() async {
-    final docs = await getApplicationDocumentsDirectory();
-    final root = Directory(p.join(docs.path, 'MyEduAppData'));
+    final parent = await _dataParentPath();
+    final root = Directory(p.join(parent, 'MyEduAppData'));
     if (!root.existsSync()) {
       root.createSync(recursive: true);
     }
@@ -35,8 +46,9 @@ class AppPaths {
 
   Future<Directory> getLessonDir(String className, String lessonName) async {
     final classDir = await getClassDir(className);
-    final lessonDir =
-        Directory(p.join(classDir.path, sanitizePathSegment(lessonName)));
+    final lessonDir = Directory(
+      p.join(classDir.path, sanitizePathSegment(lessonName)),
+    );
     if (!lessonDir.existsSync()) {
       lessonDir.createSync(recursive: true);
     }
@@ -71,5 +83,15 @@ class AppPaths {
     return dir;
   }
 
+  /// Kapak/görsel medya dosyaları (Gorseller/{category}/).
+  Future<Directory> getMediaDir(String category) async {
+    final root = await getRootDir();
+    final dir = Directory(
+      p.join(root.path, 'Gorseller', sanitizePathSegment(category)),
+    );
+    if (!dir.existsSync()) {
+      dir.createSync(recursive: true);
+    }
+    return dir;
+  }
 }
-

@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../data/models/exam_question.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/app_state.dart';
+import '../utils/app_navigation.dart';
 
 class QuestionBankScreen extends StatelessWidget {
   const QuestionBankScreen({super.key});
@@ -23,8 +24,11 @@ class QuestionBankScreen extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.home),
             tooltip: strings.t('goHome'),
-            onPressed: () {
-              Navigator.of(context).popUntil((route) => route.isFirst);
+            onPressed: () async {
+              final confirmed = await confirmLeavePage(context);
+              if (confirmed && context.mounted) {
+                popToSessionHome(context);
+              }
             },
           ),
         ],

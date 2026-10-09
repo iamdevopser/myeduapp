@@ -36,7 +36,9 @@ class BackupService {
     final archive = ZipDecoder().decodeBytes(await File(zipPath).readAsBytes());
     extractArchiveToDisk(archive, tempDir.path);
 
-    final extractedRoot = Directory(p.join(tempDir.path, p.basename(root.path)));
+    final extractedRoot = Directory(
+      p.join(tempDir.path, p.basename(root.path)),
+    );
     final sourceDir = extractedRoot.existsSync() ? extractedRoot : tempDir;
     if (root.existsSync()) {
       await root.delete(recursive: true);
@@ -44,4 +46,3 @@ class BackupService {
     await fileService.copyDirectory(sourceDir, root);
   }
 }
-

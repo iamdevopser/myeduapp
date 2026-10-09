@@ -1,12 +1,23 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
 import '../providers/app_state.dart';
+import '../services/authorization_service.dart';
+import '../services/backup_package_service.dart';
+import '../utils/teacher_display_name.dart';
+import '../theme/app_spacing.dart';
+import '../utils/teacher_nav_section.dart';
+import '../utils/workspace_app_shell.dart';
+import '../widgets/design_settings_profile_header.dart';
+import '../widgets/settings_section.dart';
+import '../widgets/smtp_settings_section.dart';
+import 'design_access_denied_screen.dart';
 import 'global_search_screen.dart';
 import 'question_bank_screen.dart';
-import 'user_guide_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -16,303 +27,389 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = AppLocalizations.of(context);
+
     return Consumer<AppState>(
-      builder: (context, state, child) {
-        return Scaffold(
-          appBar: AppBar(
-            title: Text(strings.t('settings')),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.home),
-                tooltip: strings.t('goHome'),
-                onPressed: () {
-                  Navigator.of(context).popUntil((route) => route.isFirst);
-                },
+      builder: (context, state, _) {
+        final auth = AuthorizationService(state);
+        final width = MediaQuery.sizeOf(context).width;
+        final padding = AppSpacing.pagePadding(width);
+
+        if (!auth.canManageLocaleAndTheme) {
+          return WorkspaceAppShell(
+            title: strings.t('settings'),
+            teacherNavSection: TeacherNavSection.settings,
+            child: const DesignAccessDeniedScreen(embedded: true),
+          );
+        }
+
+        final children = <Widget>[
+          ..._generalSettingsSections(context, state, strings),
+          if (!auth.canManageTeacherWorkspaceSettings)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+              child: Text(
+                strings.t('settingsGeneralHint'),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
-            ],
-          ),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Text(strings.t('language'),
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              DropdownButton<Locale>(
-                value: state.locale,
-                items: const [
-                  DropdownMenuItem(
-                    value: Locale('tr'),
-                    child: Text('Türkçe'),
-                  ),
-                  DropdownMenuItem(
-                    value: Locale('en'),
-                    child: Text('English'),
-                  ),
-                ],
-                onChanged: (value) {
-                  if (value != null) {
-                    state.setLocale(value);
-                  }
-                },
-              ),
-              const SizedBox(height: 16),
-              Text(strings.t('theme'),
-                  style: Theme.of(context).textTheme.titleMedium),
-              DropdownButton<ThemeMode>(
-                value: state.themeMode,
-                items: [
-                  DropdownMenuItem(
-                    value: ThemeMode.system,
-                    child: Text(strings.t('themeSystem')),
-                  ),
-                  DropdownMenuItem(
-                    value: ThemeMode.light,
-                    child: Text(strings.t('themeLight')),
-                  ),
-                  DropdownMenuItem(
-                    value: ThemeMode.dark,
-                    child: Text(strings.t('themeDark')),
-                  ),
-                ],
-                onChanged: (value) {
-                  if (value != null) {
-                    state.setThemeMode(value);
-                  }
-                },
-              ),
-              const SizedBox(height: 24),
-              Text(strings.t('security'),
-                  style: Theme.of(context).textTheme.titleMedium),
-              SwitchListTile(
-                title: Text(strings.t('enableLock')),
-                value: state.lockEnabled,
-                onChanged: (value) async {
-                  if (value) {
-                    final success = await _showPasswordDialog(
-                      context,
-                      isChange: false,
-                    );
-                    if (success != null) {
-                      await state.setPassword(success);
-                      await state.setLockEnabled(true);
-                    }
-                  } else {
-                    final confirmed = await _showConfirmDialog(
-                      context,
-                      strings.t('disableLock'),
-                    );
-                    if (confirmed) {
-                      await state.setLockEnabled(false);
-                    }
-                  }
-                },
-              ),
-              if (state.lockEnabled)
-                ListTile(
-                  title: Text(strings.t('changePassword')),
-                  trailing: const Icon(Icons.chevron_right),
+            ),
+          if (auth.canManageTeacherWorkspaceSettings) ...[
+            const _TeacherDisplayNameSection(),
+            const SmtpSettingsSection(),
+            SettingsSection(
+              title: strings.t('security'),
+              icon: Icons.lock_outline,
+              children: [
+                SettingsRow(
+                  title: strings.t('changeTeacherPassword'),
+                  subtitle: strings.t('teacherPasswordHint'),
                   onTap: () async {
-                    final result =
-                        await _showPasswordDialog(context, isChange: true);
-                    if (result != null) {
-                      await state.setPassword(result);
-                    }
-                  },
-                ),
-              const SizedBox(height: 16),
-              Text(strings.t('autoBackup'),
-                  style: Theme.of(context).textTheme.titleMedium),
-              SwitchListTile(
-                title: Text(strings.t('autoBackup')),
-                value: state.autoBackupEnabled,
-                onChanged: (value) => state.setAutoBackupEnabled(value),
-              ),
-              const SizedBox(height: 24),
-              Text(strings.t('userGuide'),
-                  style: Theme.of(context).textTheme.titleMedium),
-              ListTile(
-                title: Text(strings.t('openUserGuide')),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  Navigator.of(context).pushNamed(UserGuideScreen.routeName);
-                },
-              ),
-              if (state.autoBackupEnabled)
-                TextField(
-                  keyboardType: TextInputType.number,
-                  decoration:
-                      InputDecoration(labelText: strings.t('backupInterval')),
-                  onSubmitted: (value) {
-                    final minutes = int.tryParse(value);
-                    if (minutes != null && minutes > 0) {
-                      state.setAutoBackupMinutes(minutes);
-                    }
-                  },
-                ),
-              const SizedBox(height: 16),
-              Text(strings.t('tags'),
-                  style: Theme.of(context).textTheme.titleMedium),
-              ListTile(
-                title: Text(strings.t('manageTags')),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => _showManageTagsDialog(context, state),
-              ),
-              const SizedBox(height: 16),
-              Text(strings.t('questionBank'),
-                  style: Theme.of(context).textTheme.titleMedium),
-              ListTile(
-                title: Text(strings.t('questionBank')),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  Navigator.of(context)
-                      .pushNamed(QuestionBankScreen.routeName);
-                },
-              ),
-              const SizedBox(height: 16),
-              Text(strings.t('search'),
-                  style: Theme.of(context).textTheme.titleMedium),
-              ListTile(
-                title: Text(strings.t('search')),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  Navigator.of(context)
-                      .pushNamed(GlobalSearchScreen.routeName);
-                },
-              ),
-              const SizedBox(height: 24),
-              Text(strings.t('backup'),
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              FilledButton.icon(
-                onPressed: () async {
-                  final path = await FilePicker.platform.saveFile(
-                    dialogTitle: strings.t('pickBackupLocation'),
-                    fileName:
-                        'myeduapp_backup_${DateTime.now().millisecondsSinceEpoch}.zip',
-                    allowedExtensions: ['zip'],
-                    type: FileType.custom,
-                  );
-                  if (path != null) {
-                    try {
-                      await state.backupTo(path);
-                      _showSnack(context, strings.t('backupSuccess'));
-                    } catch (_) {
-                      _showSnack(context, strings.t('backupFailed'));
-                    }
-                  }
-                },
-                icon: const Icon(Icons.archive),
-                label: Text(strings.t('backup')),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  final file = await FilePicker.platform.pickFiles(
-                    dialogTitle: strings.t('pickRestoreFile'),
-                    type: FileType.custom,
-                    allowedExtensions: ['zip'],
-                  );
-                  if (file != null && file.files.single.path != null) {
-                    final confirm = await _showConfirmDialog(
+                    final result = await _showPasswordDialog(
                       context,
-                      strings.t('restoreWarning'),
+                      isChange: true,
+                      isTeacher: true,
                     );
-                    if (confirm) {
-                      try {
-                        await state.restoreFrom(file.files.single.path!);
-                        _showSnack(context, strings.t('restoreSuccess'));
-                      } catch (_) {
-                        _showSnack(context, strings.t('restoreFailed'));
-                      }
+                    if (result != null) {
+                      await state.setTeacherPassword(result);
                     }
-                  }
-                },
-                icon: const Icon(Icons.restore),
-                label: Text(strings.t('restore')),
-              ),
+                  },
+                ),
+                SettingsRow(
+                  title: strings.t('changeStudentPassword'),
+                  subtitle: strings.t('studentPasswordHint'),
+                  onTap: () async {
+                    final result = await _showPasswordDialog(
+                      context,
+                      isChange: true,
+                    );
+                    if (result != null) {
+                      await state.setStudentPassword(result);
+                    }
+                  },
+                ),
+                SettingsRow(
+                  title: strings.t('changeSecretaryPassword'),
+                  subtitle: strings.t('secretaryPasswordHint'),
+                  onTap: () async {
+                    final result = await _showPasswordDialog(
+                      context,
+                      isChange: true,
+                    );
+                    if (result != null) {
+                      await state.setSecretaryPassword(result);
+                    }
+                  },
+                ),
+              ],
+            ),
+            SettingsSection(
+              title: strings.t('autoBackup'),
+              icon: Icons.backup_outlined,
+              children: [
+                SwitchListTile(
+                  title: Text(strings.t('autoBackup')),
+                  value: state.autoBackupEnabled,
+                  onChanged: state.setAutoBackupEnabled,
+                ),
+                if (state.autoBackupEnabled)
+                  _AutoBackupIntervalField(
+                    initialMinutes: state.autoBackupMinutes,
+                    onSave: state.setAutoBackupMinutes,
+                  ),
+              ],
+            ),
+            SettingsSection(
+              title: strings.t('tags'),
+              icon: Icons.label_outline,
+              children: [
+                SettingsRow(
+                  title: strings.t('manageTags'),
+                  onTap: () => _showManageTagsDialog(context, state),
+                ),
+              ],
+            ),
+            SettingsSection(
+              title: strings.t('questionBank'),
+              icon: Icons.quiz_outlined,
+              children: [
+                SettingsRow(
+                  title: strings.t('questionBank'),
+                  onTap: () {
+                    Navigator.of(
+                      context,
+                    ).pushNamed(QuestionBankScreen.routeName);
+                  },
+                ),
+              ],
+            ),
+            SettingsSection(
+              title: strings.t('search'),
+              icon: Icons.search,
+              children: [
+                SettingsRow(
+                  title: strings.t('search'),
+                  onTap: () {
+                    Navigator.of(
+                      context,
+                    ).pushNamed(GlobalSearchScreen.routeName);
+                  },
+                ),
+              ],
+            ),
+            SettingsSection(
+              title: strings.t('backup'),
+              icon: Icons.archive_outlined,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      FilledButton.icon(
+                        icon: const Icon(Icons.archive),
+                        label: Text(strings.t('backup')),
+                        onPressed: () async {
+                          final fileName =
+                              'myeduapp_backup_${DateTime.now().millisecondsSinceEpoch}.zip';
+                          try {
+                            if (Platform.isAndroid || Platform.isIOS) {
+                              final zipBytes = await state.buildBackupBytes();
+                              final saved = await FilePicker.platform.saveFile(
+                                dialogTitle: strings.t('pickBackupLocation'),
+                                fileName: fileName,
+                                allowedExtensions: ['zip'],
+                                type: FileType.custom,
+                                bytes: zipBytes,
+                              );
+                              if (saved == null) return;
+                            } else {
+                              final path = await FilePicker.platform.saveFile(
+                                dialogTitle: strings.t('pickBackupLocation'),
+                                fileName: fileName,
+                                allowedExtensions: ['zip'],
+                                type: FileType.custom,
+                              );
+                              if (path == null) return;
+                              await state.backupTo(path);
+                            }
+                            if (!context.mounted) return;
+                            _showSnack(context, strings.t('backupSuccess'));
+                          } catch (_) {
+                            if (!context.mounted) return;
+                            _showSnack(context, strings.t('backupFailed'));
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.restore),
+                        label: Text(strings.t('restore')),
+                        onPressed: () async {
+                          final result = await FilePicker.platform.pickFiles(
+                            type: FileType.custom,
+                            allowedExtensions: ['zip'],
+                            withData: true,
+                          );
+                          if (result == null || result.files.isEmpty) {
+                            return;
+                          }
+                          final picked = result.files.single;
+                          var restorePath = picked.path;
+                          if (restorePath == null && picked.bytes != null) {
+                            final tempFile = File(
+                              '${Directory.systemTemp.path}'
+                              '${Platform.pathSeparator}'
+                              'myeduapp_restore_'
+                              '${DateTime.now().millisecondsSinceEpoch}.zip',
+                            );
+                            await tempFile.writeAsBytes(picked.bytes!);
+                            restorePath = tempFile.path;
+                          }
+                          if (restorePath == null) {
+                            return;
+                          }
+                          final confirm = await _showConfirmDialog(
+                            context,
+                            strings.t('restoreWarning'),
+                          );
+                          if (!confirm) return;
+                          try {
+                            final result = await state.restoreFrom(restorePath);
+                            if (!context.mounted) return;
+                            _showSnack(context, strings.t('restoreSuccess'));
+                            if (result.missingFileCount > 0) {
+                              _showSnack(
+                                context,
+                                strings
+                                    .t('restoreMissingFilesWarning')
+                                    .replaceAll(
+                                      '{count}',
+                                      '${result.missingFileCount}',
+                                    ),
+                              );
+                            }
+                          } on BackupIntegrityException catch (e) {
+                            debugPrint('===== RESTORE BUTUNLUK HATASI =====');
+                            debugPrint('Hata: $e');
+                            if (!context.mounted) return;
+                            _showSnack(
+                              context,
+                              strings.t('restoreCorruptedBackup'),
+                            );
+                          } catch (e, stackTrace) {
+                            debugPrint('===== RESTORE HATASI =====');
+                            debugPrint('Hata: $e');
+                            debugPrint('StackTrace:');
+                            debugPrint('$stackTrace');
+                            debugPrint('===== RESTORE HATASI SON =====');
+                            if (!context.mounted) return;
+                            _showSnack(context, strings.t('restoreFailed'));
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ];
+
+        final compact = width < 600;
+        final listChild = ListView(
+          padding: padding,
+          children: [
+            if (compact)
+              Card(
+                margin: EdgeInsets.zero,
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const DesignSettingsProfileHeader(),
+                    const Divider(height: 1),
+                    ...children,
+                  ],
+                ),
+              )
+            else ...[
+              const DesignSettingsProfileHeader(),
+              const SizedBox(height: AppSpacing.lg),
+              ...children,
             ],
-          ),
+          ],
+        );
+
+        return WorkspaceAppShell(
+          title: strings.t('settings'),
+          teacherNavSection: TeacherNavSection.settings,
+          child: listChild,
         );
       },
     );
   }
+
+  static List<Widget> _generalSettingsSections(
+    BuildContext context,
+    AppState state,
+    AppLocalizations strings,
+  ) {
+    return [
+      SettingsSection(
+        title: strings.t('language'),
+        icon: Icons.language,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: DropdownButton<Locale>(
+              isExpanded: true,
+              value: state.locale,
+              items: [
+                for (final locale in AppLocalizations.supportedLocales)
+                  DropdownMenuItem(
+                    value: locale,
+                    child: Text(
+                      AppLocalizations.languageNames[locale.languageCode] ??
+                          locale.languageCode,
+                    ),
+                  ),
+              ],
+              onChanged: (value) {
+                if (value != null) state.setLocale(value);
+              },
+            ),
+          ),
+        ],
+      ),
+      SettingsSection(
+        title: strings.t('theme'),
+        icon: Icons.palette_outlined,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: DropdownButton<ThemeMode>(
+              isExpanded: true,
+              value: state.themeMode,
+              items: [
+                DropdownMenuItem(
+                  value: ThemeMode.system,
+                  child: Text(strings.t('themeSystem')),
+                ),
+                DropdownMenuItem(
+                  value: ThemeMode.light,
+                  child: Text(strings.t('themeLight')),
+                ),
+                DropdownMenuItem(
+                  value: ThemeMode.dark,
+                  child: Text(strings.t('themeDark')),
+                ),
+              ],
+              onChanged: (value) {
+                if (value != null) state.setThemeMode(value);
+              },
+            ),
+          ),
+        ],
+      ),
+    ];
+  }
+
+  // ================== DIALOGS ==================
 
   Future<void> _showManageTagsDialog(
     BuildContext context,
     AppState state,
   ) async {
     final strings = AppLocalizations.of(context);
+
     await showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: Text(strings.t('manageTags')),
         content: SizedBox(
           width: 420,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                height: 240,
-                child: ListView.builder(
-                  itemCount: state.tags.length,
-                  itemBuilder: (context, index) {
-                    final tag = state.tags[index];
-                    return ListTile(
-                      title: Text(tag.name),
-                      leading: CircleAvatar(
-                        backgroundColor: tag.color == null
-                            ? Colors.grey.shade300
-                            : Color(tag.color!),
-                        radius: 10,
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.color_lens),
-                            onPressed: () async {
-                              final color = await _showColorPicker(context);
-                              if (color != null) {
-                                await state.updateTagColor(tag, color.value);
-                              }
-                            },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.edit),
-                            onPressed: () async {
-                              final updated = await _showTagNameDialog(
-                                context,
-                                initial: tag.name,
-                              );
-                              if (updated != null) {
-                                await state.updateTag(tag, updated);
-                              }
-                            },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete),
-                            onPressed: () async {
-                              await state.deleteTag(tag);
-                            },
-                          ),
-                        ],
-                      ),
-                    );
+          height: 260,
+          child: ListView.builder(
+            itemCount: state.tags.length,
+            itemBuilder: (context, index) {
+              final tag = state.tags[index];
+              return ListTile(
+                title: Text(tag.name),
+                leading: CircleAvatar(
+                  radius: 10,
+                  backgroundColor: tag.color == null
+                      ? Colors.grey.shade300
+                      : Color(tag.color!),
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete),
+                  onPressed: () {
+                    state.deleteTag(tag);
                   },
                 ),
-              ),
-              const SizedBox(height: 8),
-              FilledButton.icon(
-                onPressed: () async {
-                  final name = await _showTagNameDialog(context, initial: '');
-                  if (name != null) {
-                    await state.addTag(name);
-                  }
-                },
-                icon: const Icon(Icons.add),
-                label: Text(strings.t('add')),
-              ),
-            ],
+              );
+            },
           ),
         ),
         actions: [
@@ -325,119 +422,50 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  Future<Color?> _showColorPicker(BuildContext context) async {
-    final strings = AppLocalizations.of(context);
-    const colors = [
-      Color(0xFFEF5350),
-      Color(0xFFAB47BC),
-      Color(0xFF5C6BC0),
-      Color(0xFF29B6F6),
-      Color(0xFF26A69A),
-      Color(0xFF9CCC65),
-      Color(0xFFFFCA28),
-      Color(0xFFFFA726),
-      Color(0xFF8D6E63),
-    ];
-    return showDialog<Color>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(strings.t('selectColor')),
-        content: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: colors
-              .map(
-                (color) => GestureDetector(
-                  onTap: () => Navigator.of(context).pop(color),
-                  child: CircleAvatar(backgroundColor: color),
-                ),
-              )
-              .toList(),
-        ),
-      ),
-    );
-  }
-
-  Future<String?> _showTagNameDialog(
-    BuildContext context, {
-    required String initial,
-  }) async {
-    final strings = AppLocalizations.of(context);
-    final controller = TextEditingController(text: initial);
-    return showDialog<String>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(strings.t('addTag')),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(labelText: strings.t('addTag')),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(strings.t('cancelSimple')),
-          ),
-          FilledButton(
-            onPressed: () {
-              final value = controller.text.trim();
-              if (value.isEmpty) {
-                _showSnack(context, strings.t('invalidName'));
-                return;
-              }
-              Navigator.of(context).pop(value);
-            },
-            child: Text(strings.t('save')),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<String?> _showPasswordDialog(
     BuildContext context, {
     required bool isChange,
+    bool isTeacher = false,
   }) async {
     final strings = AppLocalizations.of(context);
-    final passwordController = TextEditingController();
-    final confirmController = TextEditingController();
+    final pass = TextEditingController();
+    final confirm = TextEditingController();
+    final title = isTeacher
+        ? (isChange
+              ? strings.t('changeTeacherPassword')
+              : strings.t('setTeacherPassword'))
+        : (isChange ? strings.t('changePassword') : strings.t('setPassword'));
+
     return showDialog<String>(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text(isChange ? strings.t('changePassword') : strings.t('setPassword')),
+        title: Text(title),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
-              controller: passwordController,
+              controller: pass,
               obscureText: true,
               decoration: InputDecoration(labelText: strings.t('newPassword')),
             ),
             TextField(
-              controller: confirmController,
+              controller: confirm,
               obscureText: true,
-              decoration: InputDecoration(labelText: strings.t('confirmPassword')),
+              decoration: InputDecoration(
+                labelText: strings.t('confirmPassword'),
+              ),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: Text(strings.t('cancelSimple')),
+            child: Text(strings.t('cancel')),
           ),
           FilledButton(
             onPressed: () {
-              final password = passwordController.text.trim();
-              final confirm = confirmController.text.trim();
-              if (password.length < 4) {
-                _showSnack(context, strings.t('passwordTooShort'));
-                return;
-              }
-              if (password != confirm) {
-                _showSnack(context, strings.t('passwordMismatch'));
-                return;
-              }
-              Navigator.of(context).pop(password);
+              if (pass.text != confirm.text || pass.text.length < 4) return;
+              Navigator.of(context).pop(pass.text);
             },
             child: Text(strings.t('save')),
           ),
@@ -467,10 +495,145 @@ class SettingsScreen extends StatelessWidget {
         false;
   }
 
-  void _showSnack(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+  void _showSnack(BuildContext context, String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+}
+
+class _AutoBackupIntervalField extends StatefulWidget {
+  const _AutoBackupIntervalField({
+    required this.initialMinutes,
+    required this.onSave,
+  });
+
+  final int initialMinutes;
+  final Future<void> Function(int) onSave;
+
+  @override
+  State<_AutoBackupIntervalField> createState() =>
+      _AutoBackupIntervalFieldState();
+}
+
+class _AutoBackupIntervalFieldState extends State<_AutoBackupIntervalField> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: '${widget.initialMinutes}');
+  }
+
+  @override
+  void didUpdateWidget(covariant _AutoBackupIntervalField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialMinutes != widget.initialMinutes) {
+      _controller.text = '${widget.initialMinutes}';
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = AppLocalizations.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: TextField(
+        controller: _controller,
+        keyboardType: TextInputType.number,
+        decoration: InputDecoration(labelText: strings.t('backupInterval')),
+        onSubmitted: (value) {
+          final minutes = int.tryParse(value);
+          if (minutes != null && minutes > 0) {
+            widget.onSave(minutes);
+          }
+        },
+      ),
     );
   }
 }
 
+class _TeacherDisplayNameSection extends StatefulWidget {
+  const _TeacherDisplayNameSection();
+
+  @override
+  State<_TeacherDisplayNameSection> createState() =>
+      _TeacherDisplayNameSectionState();
+}
+
+class _TeacherDisplayNameSectionState
+    extends State<_TeacherDisplayNameSection> {
+  final _controller = TextEditingController();
+  bool _loaded = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load(AppState state) async {
+    final value =
+        await state.db.getSetting(TeacherDisplayName.settingKey) ?? '';
+    if (!mounted) return;
+    _controller.text = value;
+    setState(() => _loaded = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = AppLocalizations.of(context);
+    final state = context.watch<AppState>();
+    if (!_loaded) {
+      _load(state);
+      return const SizedBox.shrink();
+    }
+    return SettingsSection(
+      title: strings.t('teacherDisplayNameSection'),
+      icon: Icons.person_outline,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: TextField(
+            controller: _controller,
+            decoration: InputDecoration(
+              labelText: strings.t('teacherDisplayNameLabel'),
+              helperText: strings.t('teacherDisplayNameHint'),
+            ),
+            onSubmitted: (_) => _save(state, strings),
+          ),
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Padding(
+            padding: const EdgeInsets.only(right: 12, bottom: 8),
+            child: TextButton(
+              onPressed: () => _save(state, strings),
+              child: Text(strings.t('save')),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _save(AppState state, AppLocalizations strings) async {
+    try {
+      await state.setTeacherDisplayName(_controller.text.trim());
+    } on TeacherSettingsAccessDeniedException {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(strings.t('settingsAccessDenied'))),
+      );
+      return;
+    }
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(strings.t('teacherDisplayNameSaved'))),
+    );
+  }
+}

@@ -8,6 +8,3 @@ class SecurityService {
     return sha256.convert(bytes).toString();
   }
 }
-
-
-

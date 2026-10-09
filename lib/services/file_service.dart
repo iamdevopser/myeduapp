@@ -14,6 +14,8 @@ class FileService {
     'pdf',
     'doc',
     'docx',
+    'ppt',
+    'pptx',
     'jpg',
     'jpeg',
     'png',
@@ -21,6 +23,7 @@ class FileService {
     'wav',
     'mp4',
     'avi',
+    'webm',
   ];
 
   String typeForFile(String filePath) {
@@ -40,6 +43,9 @@ class FileService {
     if (['doc', 'docx'].contains(ext)) {
       return 'word';
     }
+    if (['ppt', 'pptx'].contains(ext)) {
+      return 'ppt';
+    }
     return 'file';
   }
 
@@ -56,8 +62,7 @@ class FileService {
     );
     final originalName = p.basename(sourcePath);
     final safeName = sanitizePathSegment(originalName);
-    final fileName =
-        '${DateTime.now().millisecondsSinceEpoch}_$safeName';
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}_$safeName';
     final targetPath = p.join(contentDir.path, fileName);
     await File(sourcePath).copy(targetPath);
     return targetPath;
@@ -83,8 +88,10 @@ class FileService {
     final sourceDir = Directory(folderPath);
     await for (final entity in sourceDir.list(recursive: true)) {
       if (entity is File) {
-        final ext =
-            p.extension(entity.path).toLowerCase().replaceFirst('.', '');
+        final ext = p
+            .extension(entity.path)
+            .toLowerCase()
+            .replaceFirst('.', '');
         if (!supportedExtensions.contains(ext)) {
           continue;
         }
@@ -170,13 +177,32 @@ class FileService {
 
   Future<String> copyToQuestionBank(String sourcePath) async {
     final bankDir = await paths.getQuestionBankDir();
+    return _copyFileToDir(sourcePath, bankDir.path);
+  }
+
+  /// Harici görsel/medya dosyasını MyEduAppData/Gorseller/{category}/ altına kopyalar.
+  Future<String> copyMediaToAppData({
+    required String sourcePath,
+    required String category,
+  }) async {
+    final mediaDir = await paths.getMediaDir(category);
+    return _copyFileToDir(sourcePath, mediaDir.path);
+  }
+
+  Future<String> _copyFileToDir(String sourcePath, String targetDirPath) async {
+    final source = File(sourcePath);
+    if (!await source.exists()) {
+      throw FileSystemException('Kaynak dosya bulunamadi.', sourcePath);
+    }
     final originalName = p.basename(sourcePath);
     final safeName = sanitizePathSegment(originalName);
     final fileName = '${DateTime.now().millisecondsSinceEpoch}_$safeName';
-    final targetPath = p.join(bankDir.path, fileName);
-    await File(sourcePath).copy(targetPath);
+    final targetPath = p.join(targetDirPath, fileName);
+    await source.copy(targetPath);
+    final copied = File(targetPath);
+    if (!await copied.exists()) {
+      throw FileSystemException('Dosya kopyalanamadi.', targetPath);
+    }
     return targetPath;
   }
-
 }
-

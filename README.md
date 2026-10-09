@@ -88,7 +88,20 @@ ayarlar(anahtar, deger)
 
 1. `flutter pub get`
 2. `flutter build windows`
-3. Çıktı: `build/windows/runner/Release/my_edu_app.exe`
+3. Çıktı: `build/windows/x64/runner/Release/` klasörü
+
+## Taşınabilir Kullanım (USB, Harici Disk, Smartboard)
+
+Uygulama **taşınabilir (portable)** modda çalışır. Tüm veriler exe ile aynı dizinde tutulur.
+
+**USB / Flash disk / Harici diskten çalıştırmak için:**
+
+1. `build\windows\x64\runner\Release\` klasörünün **tamamını** USB’ye veya harici diske kopyalayın
+2. `my_edu_app.exe` dosyasına çift tıklayarak uygulamayı başlatın
+3. İlk çalıştırmada `MyEduAppData` klasörü otomatik oluşturulur; tüm sınıflar, dersler ve içerikler burada saklanır
+4. USB’yi başka PC, laptop veya Smartboard’a takarak aynı verilerle kullanmaya devam edebilirsiniz
+
+**Gereksinimler:** Windows 10/11 (PC, Laptop, Smartboard). Ek kurulum gerekmez.
 
 ## Kurulum Paketi (tek tıkla, kullanıcı için)
 

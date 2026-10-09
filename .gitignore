@@ -43,3 +43,16 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Scratch logs, local databases, and editor backups.
+# Root-only for txt/json so web/manifest.json and asset Contents.json stay tracked.
+/*.txt
+/*.json
+*.bak
+*.sqlite
+*.restore_backup
+*.before_ui
+*.before_design
+*.before_restore_fix
+*.backup
+*.backup-*

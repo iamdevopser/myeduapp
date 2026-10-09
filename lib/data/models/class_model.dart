@@ -16,6 +16,13 @@ class ClassModel {
       createdAt: DateTime.parse(map['olusturma_tarihi'] as String),
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is ClassModel && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 

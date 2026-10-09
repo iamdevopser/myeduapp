@@ -1,0 +1,101 @@
+---
+description: MyEduApp core development rules
+alwaysApply: true
+---
+
+# MyEduApp – Core Development Rules
+
+Bu proje Flutter tabanlı, offline-first bir eğitim ve sınıf yönetimi uygulamasıdır.
+
+## 1. Mevcut Sistem
+
+Mevcut çalışan mimariyi, veri akışını ve uygulama davranışlarını koru.
+
+Görevi uygulamadan önce ilgili mevcut implementasyonu bul ve mevcut yapıyı temel al.
+
+Mevcut işlevleri yeniden oluşturma.
+Çalışan özellikleri gereksiz yere değiştirme veya yeniden yazma.
+
+Gereksiz refactor, yeniden yapılandırma veya mimari değişiklik yapma.
+
+Sadece verilen görev için gerekli dosyaları değiştir.
+
+## 2. Veri ve Backward Compatibility
+
+Mevcut SQLite veritabanını, tabloları, modelleri, repository/service yapılarını ve kayıtları koru.
+
+Backward compatibility her zaman korunmalı.
+
+Mevcut verilerin kaybolmasına veya bozulmasına neden olacak migration, schema değişikliği veya veri dönüşümü yapma.
+
+Database değişikliği gerekiyorsa önce mevcut yapıyı analiz et ve en küçük güvenli değişikliği uygula.
+
+Mevcut verilerle uyumluluğu doğrula.
+
+## 3. Offline-First
+
+Uygulamanın offline-first çalışma prensibini koru.
+
+Temel özellikler internet bağlantısına bağımlı hale getirilmemeli.
+
+Yeni özellikler mevcut local database ve veri akışıyla uyumlu çalışmalı.
+
+Gereksiz cloud service, backend veya harici API ekleme.
+
+## 4. Dependencies
+
+Yeni paket veya bağımlılık ekleme.
+
+Öncelikle projede zaten kullanılan paketleri ve mevcut implementasyonları kullan.
+
+Yeni dependency gerçekten zorunluysa önce mevcut çözümün neden yeterli olmadığını belirle ve mümkün olan en hafif çözümü tercih et.
+
+## 5. UI / Design System
+
+Mevcut MyEduApp Design System, componentler, typography, spacing, renkler, iconlar ve navigation yapısını mümkün olduğunca koru.
+
+Mevcut bir component aynı ihtiyacı karşılıyorsa yeni component oluşturma.
+
+UI değişikliklerinde mevcut ekranların kullanım mantığını ve responsive davranışını bozma.
+
+## 6. Architecture
+
+Mevcut architecture, state management, repository, service, model ve routing yapısını koru.
+
+Yeni bir pattern veya architecture oluşturma; mevcut yapı yeterli değilse yalnızca görev için gerekli minimum değişikliği yap.
+
+Aynı işlevi yapan duplicate model, service, repository veya component oluşturma.
+
+## 7. Scope Control
+
+Görev kapsamında olmayan dosyalara veya özelliklere dokunma.
+
+Bir problem görevle doğrudan ilgili değilse onu değiştirme.
+
+Kod kalitesini artırma amacıyla kapsam dışı refactor yapma.
+
+## 8. Validation
+
+Görevi uygulamadan önce mevcut implementasyonu ve ilgili veri akışını analiz et.
+
+Değişiklikleri mümkün olan en küçük kapsamda gerçekleştir.
+
+Görev tamamlandığında ilgili testleri çalıştır.
+
+Gerekirse ilgili analyzer/build/test kontrollerini gerçekleştir.
+
+Hata oluşursa yalnızca mevcut görevle ilgili hataları düzelt.
+
+## 9. Priority
+
+Çalışan mevcut sistem > yeni özellik.
+
+Mevcut veri > yeni veri modeli.
+
+Mevcut architecture > yeni architecture.
+
+Mevcut component > yeni component.
+
+Minimum değişiklik > kapsamlı refactor.
+
+Backward compatibility > yeni tasarım tercihi.

@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -10,12 +10,12 @@ import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:xml/xml.dart';
 import 'package:flutter/services.dart';
 
-import '../data/models/content_with_tags.dart';
 import '../data/models/exam_question.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/app_state.dart';
 import '../services/pdf_service.dart';
 import '../data/models/topic_model.dart';
+import '../utils/app_navigation.dart';
 import 'app_viewer_screen.dart';
 
 class LessonScreen extends StatefulWidget {
@@ -37,12 +37,15 @@ class _LessonScreenState extends State<LessonScreen> {
   @override
   Widget build(BuildContext context) {
     final strings = AppLocalizations.of(context);
+
     return Consumer<AppState>(
       builder: (context, state, child) {
         return Shortcuts(
           shortcuts: {
-            LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.keyF):
-                const _FocusSearchIntent(),
+            LogicalKeySet(
+              LogicalKeyboardKey.control,
+              LogicalKeyboardKey.keyF,
+            ): const _FocusSearchIntent(),
           },
           child: Actions(
             actions: {
@@ -54,157 +57,349 @@ class _LessonScreenState extends State<LessonScreen> {
               ),
             },
             child: Scaffold(
-          appBar: AppBar(
-            title: Text(strings.t('contents')),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.home),
-                tooltip: strings.t('goHome'),
-                onPressed: () {
-                  Navigator.of(context).popUntil((route) => route.isFirst);
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.apps),
-                tooltip: strings.t('goToApp'),
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const AppViewerScreen(),
+              backgroundColor: const Color(0xFFF5F7FB),
+              appBar: AppBar(
+                elevation: 0,
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF172033),
+                titleSpacing: 20,
+                title: Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8F0FF),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.menu_book_rounded,
+                        color: Color(0xFF356AE6),
+                      ),
                     ),
-                  );
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.picture_as_pdf),
-                tooltip: strings.t('exportPdf'),
-                onPressed: () async {
-                  final filePath = await FilePicker.platform.saveFile(
-                    dialogTitle: strings.t('exportPdf'),
-                    fileName: 'lesson_${DateTime.now().millisecondsSinceEpoch}.pdf',
-                    allowedExtensions: ['pdf'],
-                    type: FileType.custom,
-                  );
-                  if (filePath != null) {
-                    try {
-                      await state.exportPdf(
-                        filePath,
-                        PdfLabels(
-                          classLabel: strings.t('selectClass'),
-                          lessonLabel: strings.t('selectLesson'),
-                          contentsTitle: strings.t('contents'),
-                          emptyMessage: strings.t('noContents'),
+                    const SizedBox(width: 12),
+                    Text(
+                      strings.t('contents'),
+                      style: const TextStyle(
+                        fontSize: 21,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.home_rounded),
+                    tooltip: strings.t('goHome'),
+                    onPressed: () async {
+                      final confirmed = await confirmLeavePage(context);
+                      if (confirmed && context.mounted) {
+                        popToSessionHome(context);
+                      }
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.apps_rounded),
+                    tooltip: strings.t('goToApp'),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const AppViewerScreen(),
                         ),
                       );
-                      _showSnack(context, strings.t('pdfSaved'));
-                    } catch (_) {
-                      _showSnack(context, strings.t('exportPdfFailed'));
-                    }
-                  }
-                },
-              ),
-            ],
-          ),
-          body: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${state.selectedClass?.name ?? ''} / ${state.selectedLesson?.name ?? ''}',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 12),
-                DropdownButton<TopicModel>(
-                  isExpanded: true,
-                  value: state.selectedTopic,
-                  hint: Text(strings.t('selectTopic')),
-                  items: state.topics
-                      .map(
-                        (item) => DropdownMenuItem(
-                          value: item,
-                          child: Text(item.name),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) => state.selectTopic(value),
-                ),
-                const SizedBox(height: 12),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: () async {
-                          await _showMoveAllDialog(context, state);
-                        },
-                        icon: const Icon(Icons.drive_file_move),
-                        label: Text(strings.t('moveAll')),
-                      ),
-                      const SizedBox(width: 12),
-                      OutlinedButton.icon(
-                        onPressed: () async {
-                          final confirmed = await _confirmBulkDelete(context);
-                          if (confirmed != true) return;
-                          await state.deleteFilteredContents();
-                        },
-                        icon: const Icon(Icons.delete_sweep),
-                        label: Text(strings.t('bulkDelete')),
-                      ),
-                      const SizedBox(width: 12),
-                      FilledButton.icon(
-                        onPressed: () => _showAddContentSheet(context, state),
-                        icon: const Icon(Icons.add),
-                        label: Text(strings.t('add')),
-                      ),
-                    ],
+                    },
                   ),
-                ),
-                const SizedBox(height: 12),
-                SwitchListTile(
-                  title: Text(strings.t('showArchived')),
-                  value: state.showArchived,
-                  onChanged: (value) => state.toggleShowArchived(value),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  decoration: InputDecoration(
-                    labelText: strings.t('search'),
-                    prefixIcon: const Icon(Icons.search),
+                  IconButton(
+                    icon: const Icon(Icons.picture_as_pdf_rounded),
+                    tooltip: strings.t('exportPdf'),
+                    onPressed: () async {
+                      final filePath = await FilePicker.platform.saveFile(
+                        dialogTitle: strings.t('exportPdf'),
+                        fileName:
+                            'lesson_${DateTime.now().millisecondsSinceEpoch}.pdf',
+                        allowedExtensions: ['pdf'],
+                        type: FileType.custom,
+                      );
+                      if (filePath != null) {
+                        try {
+                          await state.exportPdf(
+                            filePath,
+                            PdfLabels(
+                              classLabel: strings.t('selectClass'),
+                              lessonLabel: strings.t('selectLesson'),
+                              contentsTitle: strings.t('contents'),
+                              emptyMessage: strings.t('noContents'),
+                            ),
+                          );
+                          _showSnack(context, strings.t('pdfSaved'));
+                        } catch (_) {
+                          _showSnack(context, strings.t('exportPdfFailed'));
+                        }
+                      }
+                    },
                   ),
-                  focusNode: _searchFocus,
-                  onChanged: state.setSearchQuery,
-                ),
-                const SizedBox(height: 12),
-                if (state.tags.isNotEmpty) ...[
-                  Text(strings.t('filterByTag')),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: state.tags
-                        .map(
-                          (tag) => FilterChip(
-                            label: Text(tag.name),
-                            selected: state.filterTagIds.contains(tag.id),
-                            backgroundColor: tag.color == null
-                                ? null
-                                : Color(tag.color!),
-                            onSelected: (_) => state.toggleFilterTag(tag.id),
-                          ),
-                        )
-                        .toList(),
-                  ),
+                  const SizedBox(width: 12),
                 ],
-                const SizedBox(height: 12),
-                Expanded(
-                  child: state.filteredContents.isEmpty
-                      ? Center(child: Text(strings.t('noContents')))
-                      : _buildContentList(context, state),
+              ),
+              body: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Course / lesson header
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [
+                            Color(0xFF356AE6),
+                            Color(0xFF5B8DEF),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF356AE6).withValues(alpha: .18),
+                            blurRadius: 18,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 52,
+                            height: 52,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: .18),
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            child: const Icon(
+                              Icons.school_rounded,
+                              color: Colors.white,
+                              size: 28,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  state.selectedClass?.name ?? '',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  state.selectedLesson?.name ?? '',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 23,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    // Topic selector
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFE2E7F0)),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<TopicModel>(
+                          isExpanded: true,
+                          value: state.selectedTopic,
+                          hint: Text(strings.t('selectTopic')),
+                          icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                          items: state.topics
+                              .map(
+                                (item) => DropdownMenuItem(
+                                  value: item,
+                                  child: Text(
+                                    item.name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) => state.selectTopic(value),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // Actions
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          FilledButton.icon(
+                            onPressed: () =>
+                                _showAddContentSheet(context, state),
+                            icon: const Icon(Icons.add_rounded),
+                            label: Text(strings.t('add')),
+                          ),
+                          const SizedBox(width: 10),
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              await _showMoveAllDialog(context, state);
+                            },
+                            icon: const Icon(Icons.drive_file_move_rounded),
+                            label: Text(strings.t('moveAll')),
+                          ),
+                          const SizedBox(width: 10),
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              final confirmed = await _confirmBulkDelete(
+                                context,
+                              );
+                              if (confirmed != true) return;
+                              await state.deleteFilteredContents();
+                            },
+                            icon: const Icon(Icons.delete_sweep_rounded),
+                            label: Text(strings.t('bulkDelete')),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    // Search + archive
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            focusNode: _searchFocus,
+                            onChanged: state.setSearchQuery,
+                            decoration: InputDecoration(
+                              hintText: strings.t('search'),
+                              prefixIcon: const Icon(Icons.search_rounded),
+                              filled: true,
+                              fillColor: Colors.white,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide.none,
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFFE2E7F0),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: const Color(0xFFE2E7F0),
+                            ),
+                          ),
+                          child: SwitchListTile(
+                            dense: true,
+                            contentPadding:
+                                const EdgeInsets.symmetric(horizontal: 10),
+                            title: Text(strings.t('showArchived')),
+                            value: state.showArchived,
+                            onChanged: state.toggleShowArchived,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    if (state.tags.isNotEmpty) ...[
+                      Text(
+                        strings.t('filterByTag'),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF354052),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: state.tags
+                            .map(
+                              (tag) => FilterChip(
+                                label: Text(tag.name),
+                                selected:
+                                    state.filterTagIds.contains(tag.id),
+                                backgroundColor: tag.color == null
+                                    ? Colors.white
+                                    : Color(tag.color!),
+                                onSelected: (_) =>
+                                    state.toggleFilterTag(tag.id),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+
+                    Expanded(
+                      child: state.filteredContents.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(18),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: const Icon(
+                                      Icons.folder_open_rounded,
+                                      size: 42,
+                                      color: Color(0xFF9AA5B5),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    strings.t('noContents'),
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF667085),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : _buildContentList(context, state),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-              ],
-            ),
-          ),
+              ),
             ),
           ),
         );
@@ -214,25 +409,25 @@ class _LessonScreenState extends State<LessonScreen> {
 
   Future<bool?> _confirmBulkDelete(BuildContext context) async {
     final strings = AppLocalizations.of(context);
+
     return showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text(strings.t('bulkDelete')),
-        content: Text(strings.t('bulkDeleteConfirm')),
+        content: Text(strings.t('bulkDelete')),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(strings.t('cancelSimple')),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(strings.t('confirm')),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Delete'),
           ),
         ],
       ),
     );
   }
-
   Widget _buildContentList(BuildContext context, AppState state) {
     final isFiltering =
         state.searchQuery.trim().isNotEmpty || state.filterTagIds.isNotEmpty;
@@ -401,10 +596,7 @@ class _LessonScreenState extends State<LessonScreen> {
     );
   }
 
-  Future<void> _showAddExamDialog(
-    BuildContext context,
-    AppState state,
-  ) async {
+  Future<void> _showAddExamDialog(BuildContext context, AppState state) async {
     final strings = AppLocalizations.of(context);
     final nameController = TextEditingController();
     final questions = <ExamQuestion>[];
@@ -420,7 +612,9 @@ class _LessonScreenState extends State<LessonScreen> {
               children: [
                 TextField(
                   controller: nameController,
-                  decoration: InputDecoration(labelText: strings.t('examTitle')),
+                  decoration: InputDecoration(
+                    labelText: strings.t('examTitle'),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Align(
@@ -446,8 +640,7 @@ class _LessonScreenState extends State<LessonScreen> {
                               IconButton(
                                 icon: const Icon(Icons.edit),
                                 onPressed: () async {
-                                  final updated =
-                                      await _showAddQuestionDialog(
+                                  final updated = await _showAddQuestionDialog(
                                     context,
                                     state: state,
                                     title: strings.t('editQuestion'),
@@ -522,8 +715,10 @@ class _LessonScreenState extends State<LessonScreen> {
                   alignment: Alignment.centerLeft,
                   child: OutlinedButton.icon(
                     onPressed: () async {
-                      final selected =
-                          await _showPickFromBankDialog(context, state);
+                      final selected = await _showPickFromBankDialog(
+                        context,
+                        state,
+                      );
                       if (selected.isNotEmpty) {
                         setState(() {
                           questions.addAll(selected);
@@ -576,8 +771,9 @@ class _LessonScreenState extends State<LessonScreen> {
     required AppState state,
   }) async {
     final strings = AppLocalizations.of(context);
-    final questionController =
-        TextEditingController(text: initial?.value ?? '');
+    final questionController = TextEditingController(
+      text: initial?.value ?? '',
+    );
     final optionController = TextEditingController();
     final options = <String>[...(initial?.options ?? [])];
     int? correctOptionIndex = initial?.correctOptionIndex;
@@ -627,8 +823,9 @@ class _LessonScreenState extends State<LessonScreen> {
                     type == ExamQuestionType.multipleChoice)
                   TextField(
                     controller: questionController,
-                    decoration:
-                        InputDecoration(labelText: strings.t('questionText')),
+                    decoration: InputDecoration(
+                      labelText: strings.t('questionText'),
+                    ),
                   ),
                 if (type == ExamQuestionType.image)
                   Row(
@@ -928,8 +1125,8 @@ class _LessonScreenState extends State<LessonScreen> {
                     final options = optionsJson == null
                         ? <String>[]
                         : (jsonDecode(optionsJson) as List)
-                            .map((e) => e.toString())
-                            .toList();
+                              .map((e) => e.toString())
+                              .toList();
                     final type = typeCode == 'mcq'
                         ? ExamQuestionType.multipleChoice
                         : ExamQuestionType.text;
@@ -1013,10 +1210,7 @@ class _LessonScreenState extends State<LessonScreen> {
         .toList();
   }
 
-  Future<void> _showAddLinkDialog(
-    BuildContext context,
-    AppState state,
-  ) async {
+  Future<void> _showAddLinkDialog(BuildContext context, AppState state) async {
     final strings = AppLocalizations.of(context);
     final titleController = TextEditingController();
     final urlController = TextEditingController();
@@ -1062,7 +1256,7 @@ class _LessonScreenState extends State<LessonScreen> {
   Future<void> _showTagEditor(
     BuildContext context,
     AppState state,
-    ContentWithTags item,
+    dynamic item,
   ) async {
     final strings = AppLocalizations.of(context);
     final selectedIds = item.tags.map((e) => e.id).toSet();
@@ -1144,15 +1338,15 @@ class _LessonScreenState extends State<LessonScreen> {
   }
 
   void _showSnack(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _showMoveDialog(
     BuildContext context,
     AppState state,
-    ContentWithTags item,
+    dynamic item,
   ) async {
     final strings = AppLocalizations.of(context);
     TopicModel? selected = state.selectedTopic;
@@ -1169,10 +1363,8 @@ class _LessonScreenState extends State<LessonScreen> {
               child: Text(strings.t('selectTopic')),
             ),
             ...state.topics.map(
-              (topic) => DropdownMenuItem(
-                value: topic,
-                child: Text(topic.name),
-              ),
+              (topic) =>
+                  DropdownMenuItem(value: topic, child: Text(topic.name)),
             ),
           ],
           onChanged: (value) {
@@ -1198,10 +1390,7 @@ class _LessonScreenState extends State<LessonScreen> {
     );
   }
 
-  Future<void> _showMoveAllDialog(
-    BuildContext context,
-    AppState state,
-  ) async {
+  Future<void> _showMoveAllDialog(BuildContext context, AppState state) async {
     final strings = AppLocalizations.of(context);
     TopicModel? selected = state.selectedTopic;
     await showDialog(
@@ -1217,10 +1406,8 @@ class _LessonScreenState extends State<LessonScreen> {
               child: Text(strings.t('selectTopic')),
             ),
             ...state.topics.map(
-              (topic) => DropdownMenuItem(
-                value: topic,
-                child: Text(topic.name),
-              ),
+              (topic) =>
+                  DropdownMenuItem(value: topic, child: Text(topic.name)),
             ),
           ],
           onChanged: (value) {
@@ -1260,7 +1447,7 @@ class _ContentTile extends StatelessWidget {
     required this.onArchive,
   });
 
-  final ContentWithTags item;
+  final dynamic item;
   final VoidCallback onEditTags;
   final VoidCallback onDelete;
   final VoidCallback onOpen;
@@ -1318,4 +1505,6 @@ class _ContentTile extends StatelessWidget {
 class _FocusSearchIntent extends Intent {
   const _FocusSearchIntent();
 }
+
+
 
