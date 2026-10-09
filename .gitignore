@@ -56,3 +56,6 @@ app.*.map.json
 *.before_restore_fix
 *.backup
 *.backup-*
+
+# Keep project notes local; do not publish markdown to GitHub.
+*.md
