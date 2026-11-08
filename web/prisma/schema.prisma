@@ -1,0 +1,763 @@
+// MyEduApp web schema.
+// SQLite table names from the desktop app are noted on each model.
+// CurriculumClass (siniflar) and RosterClass (ogrenci_siniflar) stay separate.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AppRole {
+  teacher
+  student
+  secretary
+  parent
+  admin
+}
+
+enum ContentType {
+  text
+  pdf
+  ppt
+  word
+  image
+  video
+  audio
+  link
+  homework
+  question
+  exam
+}
+
+enum QuestionType {
+  text
+  image
+  mcq
+}
+
+enum AnnouncementStatus {
+  draft
+  published
+  unpublished
+}
+
+enum AnnouncementTarget {
+  all_school
+  grade
+  section
+}
+
+enum AttendanceStatus {
+  present
+  absent
+  excused
+}
+
+enum BehaviorKind {
+  positive
+  needs_improvement
+}
+
+enum ParentRelation {
+  anne
+  baba
+  diger
+}
+
+enum NotificationStatus {
+  unread
+  read
+}
+
+/// hesaplar
+model Account {
+  id                 Int       @id @default(autoincrement())
+  username           String    @unique
+  email              String?   @unique
+  fullName           String    @default("")
+  role               AppRole
+  passwordHash       String
+  active             Boolean   @default(true)
+  domainType         String?
+  domainId           Int?
+  mustChangePassword Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  lastLoginAt        DateTime?
+
+  preference     AccountPreference?
+  favorites      Favorite[]
+  reading        ContentReadingProgress[]
+  activities     TeacherActivity[]
+  auditAsSubject AccountAudit[]        @relation("AuditSubject")
+  auditAsActor   AccountAudit[]        @relation("AuditActor")
+
+  @@index([role, active])
+  @@index([domainType, domainId])
+  @@map("accounts")
+}
+
+model AccountPreference {
+  accountId Int     @id
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  locale    String  @default("tr")
+  themeMode String  @default("system")
+
+  @@map("account_preferences")
+}
+
+/// hesap_denetcilik
+model AccountAudit {
+  id             Int      @id @default(autoincrement())
+  accountId      Int?
+  account        Account? @relation("AuditSubject", fields: [accountId], references: [id], onDelete: SetNull)
+  action         String
+  detail         String?
+  actorAccountId Int?
+  actor          Account? @relation("AuditActor", fields: [actorAccountId], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+
+  @@index([accountId])
+  @@map("account_audit")
+}
+
+/// ayarlar — school-wide keys (SMTP). Per-user locale lives on AccountPreference.
+model AppSetting {
+  key   String @id
+  value String
+
+  @@map("app_settings")
+}
+
+/// siniflar
+model CurriculumClass {
+  id        Int      @id @default(autoincrement())
+  name      String
+  createdAt DateTime @default(now())
+  lessons   Lesson[]
+
+  @@map("curriculum_classes")
+}
+
+/// dersler
+model Lesson {
+  id                Int             @id @default(autoincrement())
+  curriculumClassId Int
+  curriculumClass   CurriculumClass @relation(fields: [curriculumClassId], references: [id], onDelete: Cascade)
+  name              String
+  order             Int
+  createdAt         DateTime        @default(now())
+  academicYear      String          @default("")
+  imageKey          String?
+  teacherName       String?
+
+  units         Unit[]
+  topics        Topic[]
+  contents      Content[]
+  exams         Exam[]
+  notes         LessonNote[]
+  weeklyLessons WeeklyLesson[]
+  dailyPlans    DailyPlan[]
+  annualPlans   AnnualPlan[]
+  announcements Announcement[]
+
+  @@index([curriculumClassId])
+  @@map("lessons")
+}
+
+/// uniteler
+model Unit {
+  id        Int      @id @default(autoincrement())
+  lessonId  Int
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  name      String
+  number    Int      @default(1)
+  order     Int
+  imageKey  String?
+  createdAt DateTime @default(now())
+  topics    Topic[]
+
+  @@index([lessonId])
+  @@map("units")
+}
+
+/// konular
+model Topic {
+  id        Int      @id @default(autoincrement())
+  lessonId  Int
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  unitId    Int?
+  unit      Unit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  name      String
+  order     Int
+  imageKey  String?
+  createdAt DateTime @default(now())
+
+  contents Content[]
+  exams    Exam[]
+  notes    LessonNote[]
+
+  @@index([lessonId])
+  @@map("topics")
+}
+
+/// icerikler. School documents have isSchoolDocument and a null lessonId.
+model Content {
+  id               Int         @id @default(autoincrement())
+  lessonId         Int?
+  lesson           Lesson?     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  topicId          Int?
+  topic            Topic?      @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  name             String
+  type             ContentType
+  storageKey       String
+  order            Int
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  archived         Boolean     @default(false)
+  isSchoolDocument Boolean     @default(false)
+  critical         Boolean     @default(false)
+  description      String?
+  category         String?
+  scope            String?
+
+  tags      ContentTag[]
+  favorites Favorite[]
+  reading   ContentReadingProgress[]
+  folderItems DocumentFolderItem[]
+
+  @@index([lessonId])
+  @@index([isSchoolDocument, archived])
+  @@map("contents")
+}
+
+/// etiketler
+model Tag {
+  id       Int          @id @default(autoincrement())
+  name     String       @unique
+  contents ContentTag[]
+
+  @@map("tags")
+}
+
+/// icerik_etiketleri
+model ContentTag {
+  contentId Int
+  tagId     Int
+  content   Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([contentId, tagId])
+  @@map("content_tags")
+}
+
+/// favoriler — per account, because the web app is multi-user.
+model Favorite {
+  accountId Int
+  contentId Int
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  content   Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@id([accountId, contentId])
+  @@map("favorites")
+}
+
+/// icerik_okuma — per account.
+model ContentReadingProgress {
+  accountId Int
+  contentId Int
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  content   Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  lastPage  Int      @default(1)
+  updatedAt DateTime @updatedAt
+  extraJson String?
+
+  @@id([accountId, contentId])
+  @@map("content_reading_progress")
+}
+
+/// ders_gorselleri
+model LessonImage {
+  name     String  @id
+  imageKey String?
+
+  @@map("lesson_images")
+}
+
+/// sinavlar
+model Exam {
+  id        Int      @id @default(autoincrement())
+  lessonId  Int
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  topicId   Int?
+  topic     Topic?   @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  name      String
+  createdAt DateTime @default(now())
+  questions ExamQuestion[]
+
+  @@index([lessonId])
+  @@map("exams")
+}
+
+/// sorular
+model ExamQuestion {
+  id                 Int          @id @default(autoincrement())
+  examId             Int
+  exam               Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  prompt             String
+  type               QuestionType @default(text)
+  options            Json?
+  correctOptionIndex Int?
+  audioKey           String?
+  order              Int
+
+  @@index([examId])
+  @@map("exam_questions")
+}
+
+/// soru_bankasi
+model QuestionBankItem {
+  id                 Int          @id @default(autoincrement())
+  prompt             String
+  type               QuestionType
+  options            Json?
+  correctOptionIndex Int?
+  imageKey           String?
+  audioKey           String?
+  tags               String?
+  createdAt          DateTime     @default(now())
+
+  @@map("question_bank")
+}
+
+/// notlar
+model LessonNote {
+  id        Int      @id @default(autoincrement())
+  lessonId  Int
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  topicId   Int?
+  topic     Topic?   @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  text      String
+  createdAt DateTime @default(now())
+
+  @@index([lessonId])
+  @@map("lesson_notes")
+}
+
+/// ogrenci_siniflar
+model RosterClass {
+  id        Int      @id @default(autoincrement())
+  name      String
+  year      String
+  section   String?
+  students  Student[]
+  categories StudentCategory[]
+  scoreColumns ScoreColumn[]
+  notebookNotes ClassNotebookNote[]
+  announcements Announcement[]
+  behaviorRecords BehaviorRecord[]
+  weeklyLessons WeeklyLesson[]
+  dailyPlans DailyPlan[]
+  annualPlans AnnualPlan[]
+  mentorshipLink MentorshipClass?
+  mentorshipEvents MentorshipEvent[]
+  mentorshipReports MentorshipBehaviorReport[]
+  mentorshipNotes MentorshipNote[]
+
+  @@map("roster_classes")
+}
+
+/// ogrenciler. Portal login is an Account with domainType "student".
+model Student {
+  id            Int         @id @default(autoincrement())
+  rosterClassId Int
+  rosterClass   RosterClass @relation(fields: [rosterClassId], references: [id], onDelete: Cascade)
+  number        Int
+  fullName      String
+  email         String?
+
+  grades            GradeCell[]
+  attendance        AttendanceRecord[]
+  parentLinks       StudentParent[]
+  behaviorRecords   BehaviorRecord[]
+  mentorshipEvents  MentorshipEventStudent[]
+  mentorshipReports MentorshipBehaviorReport[]
+  mentorshipNotes   MentorshipNote[]
+
+  @@unique([rosterClassId, number])
+  @@map("students")
+}
+
+/// ogrenci_kategoriler
+model StudentCategory {
+  id            Int         @id @default(autoincrement())
+  rosterClassId Int
+  rosterClass   RosterClass @relation(fields: [rosterClassId], references: [id], onDelete: Cascade)
+  name          String
+  code          String
+  order         Int
+  active        Boolean     @default(true)
+  system        Boolean     @default(false)
+
+  @@index([rosterClassId])
+  @@map("student_categories")
+}
+
+/// not_kolonlari
+model ScoreColumn {
+  id            Int         @id @default(autoincrement())
+  rosterClassId Int
+  rosterClass   RosterClass @relation(fields: [rosterClassId], references: [id], onDelete: Cascade)
+  name          String
+  type          String
+  teacherName   String?
+  cells         GradeCell[]
+  dateNotes     ScoreColumnDateNote[]
+
+  @@index([rosterClassId])
+  @@map("score_columns")
+}
+
+/// not_kolon_tarih_aciklama
+model ScoreColumnDateNote {
+  columnId    Int
+  column      ScoreColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  date        String
+  description String
+
+  @@id([columnId, date])
+  @@map("score_column_date_notes")
+}
+
+/// ogrenci_notlari
+model GradeCell {
+  studentId Int
+  student   Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  columnId  Int
+  column    ScoreColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  date      String
+  score     Int?
+  done      Boolean?
+  absent    Boolean     @default(false)
+
+  @@id([studentId, columnId, date])
+  @@map("grade_cells")
+}
+
+/// ogrenci_devamsizlik. Desktop values var/yok/izinli map to present/absent/excused.
+model AttendanceRecord {
+  id        Int              @id @default(autoincrement())
+  studentId Int
+  student   Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  date      String
+  status    AttendanceStatus
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([studentId, date])
+  @@index([date])
+  @@map("attendance_records")
+}
+
+/// veliler
+model Parent {
+  id           Int             @id @default(autoincrement())
+  fullName     String
+  phone        String?
+  email        String?
+  address      String?
+  notes        String?
+  createdAt    DateTime        @default(now())
+  studentLinks StudentParent[]
+
+  @@map("parents")
+}
+
+/// ogrenci_veliler
+model StudentParent {
+  id        Int            @id @default(autoincrement())
+  studentId Int
+  student   Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  parentId  Int
+  parent    Parent         @relation(fields: [parentId], references: [id], onDelete: Restrict)
+  relation  ParentRelation
+  isPrimary Boolean        @default(false)
+
+  @@unique([studentId, parentId])
+  @@index([parentId])
+  @@map("student_parents")
+}
+
+/// davranis_tanimlari
+model BehaviorDefinition {
+  id      Int            @id @default(autoincrement())
+  code    String         @unique
+  name    String
+  kind    BehaviorKind
+  order   Int
+  records BehaviorRecord[]
+
+  @@map("behavior_definitions")
+}
+
+/// ogrenci_davranis_kayitlari
+model BehaviorRecord {
+  id               Int                 @id @default(autoincrement())
+  rosterClassId    Int
+  rosterClass      RosterClass         @relation(fields: [rosterClassId], references: [id], onDelete: Cascade)
+  studentId        Int
+  student          Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  behaviorId       Int
+  behavior         BehaviorDefinition  @relation(fields: [behaviorId], references: [id], onDelete: Cascade)
+  date             String
+  createdAt        DateTime            @default(now())
+  visibleToStudent Boolean             @default(false)
+
+  @@unique([studentId, behaviorId, date])
+  @@map("behavior_records")
+}
+
+/// ogrenci_duyurular
+model Announcement {
+  id               Int                  @id @default(autoincrement())
+  title            String
+  body             String
+  status           AnnouncementStatus   @default(draft)
+  targetType       AnnouncementTarget   @default(all_school)
+  rosterClassId    Int?
+  rosterClass      RosterClass?         @relation(fields: [rosterClassId], references: [id], onDelete: Cascade)
+  targetGradeLevel Int?
+  lessonId         Int?
+  lesson           Lesson?              @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  courseLabel      String?
+  teacherName      String?
+  coverImageKey    String?
+  createdAt        DateTime             @default(now())
+  publishedAt      DateTime?
+  updatedAt        DateTime             @updatedAt
+
+  @@index([status, targetType])
+  @@map("announcements")
+}
+
+/// dokuman_klasorleri
+model DocumentFolder {
+  id        Int              @id @default(autoincrement())
+  name      String
+  order     Int              @default(0)
+  parentId  Int?
+  parent    DocumentFolder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  DocumentFolder[] @relation("FolderTree")
+  createdAt DateTime         @default(now())
+  items     DocumentFolderItem[]
+
+  @@index([parentId])
+  @@map("document_folders")
+}
+
+/// dokuman_klasor_ogeleri
+model DocumentFolderItem {
+  id        Int            @id @default(autoincrement())
+  folderId  Int
+  folder    DocumentFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  contentId Int
+  content   Content        @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  order     Int            @default(0)
+
+  @@unique([folderId, contentId])
+  @@map("document_folder_items")
+}
+
+/// sinif_defteri_notlari
+model ClassNotebookNote {
+  id            Int         @id @default(autoincrement())
+  rosterClassId Int
+  rosterClass   RosterClass @relation(fields: [rosterClassId], references: [id], onDelete: Cascade)
+  text          String
+  noteDate      String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime?
+
+  @@index([rosterClassId, noteDate])
+  @@map("class_notebook_notes")
+}
+
+/// ogretmen_son_islemler — scoped to the teacher account, trimmed to 100.
+model TeacherActivity {
+  id         Int      @id @default(autoincrement())
+  accountId  Int
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  type       String
+  title      String
+  targetType String?
+  targetId   Int?
+  extraData  String?
+  createdAt  DateTime @default(now())
+
+  @@index([accountId, createdAt])
+  @@map("teacher_activities")
+}
+
+/// akademik_haftalik_saat
+model PeriodSlot {
+  period Int    @id
+  start  String
+  end    String
+
+  @@map("period_slots")
+}
+
+/// akademik_haftalik_ders
+model WeeklyLesson {
+  id            Int          @id @default(autoincrement())
+  day           Int
+  period        Int          @default(1)
+  start         String
+  end           String
+  lessonId      Int?
+  lesson        Lesson?      @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  rosterClassId Int?
+  rosterClass   RosterClass? @relation(fields: [rosterClassId], references: [id], onDelete: SetNull)
+  topicText     String       @default("")
+  classText     String       @default("")
+
+  @@index([day, period])
+  @@map("weekly_lessons")
+}
+
+/// akademik_gunluk_plan
+model DailyPlan {
+  id            Int          @id @default(autoincrement())
+  date          String
+  lessonId      Int?
+  lesson        Lesson?      @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  rosterClassId Int?
+  rosterClass   RosterClass? @relation(fields: [rosterClassId], references: [id], onDelete: SetNull)
+  topicText     String       @default("")
+  classText     String       @default("")
+  topic         String?
+  goals         String?
+  activities    String?
+  materials     String?
+  homework      String?
+  notes         String?
+
+  @@index([date])
+  @@map("daily_plans")
+}
+
+/// akademik_yillik_plan
+model AnnualPlan {
+  id            Int          @id @default(autoincrement())
+  academicYear  String
+  lessonId      Int?
+  lesson        Lesson?      @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  rosterClassId Int?
+  rosterClass   RosterClass? @relation(fields: [rosterClassId], references: [id], onDelete: SetNull)
+  topicText     String       @default("")
+  classText     String       @default("")
+  unitTopic     String
+  plannedTerm   String?
+  hours         Int?
+  goals         String?
+  notes         String?
+
+  @@index([academicYear])
+  @@map("annual_plans")
+}
+
+/// mentorluk_siniflar
+model MentorshipClass {
+  id            Int         @id @default(autoincrement())
+  rosterClassId Int         @unique
+  rosterClass   RosterClass @relation(fields: [rosterClassId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+
+  @@map("mentorship_classes")
+}
+
+/// mentorluk_etkinlikler
+model MentorshipEvent {
+  id            Int         @id @default(autoincrement())
+  rosterClassId Int
+  rosterClass   RosterClass @relation(fields: [rosterClassId], references: [id], onDelete: Cascade)
+  type          String
+  title         String
+  description   String?
+  date          String
+  time          String
+  status        String
+  wholeClass    Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  students      MentorshipEventStudent[]
+
+  @@index([rosterClassId, date])
+  @@map("mentorship_events")
+}
+
+/// mentorluk_etkinlik_ogrenciler
+model MentorshipEventStudent {
+  eventId   Int
+  studentId Int
+  event     MentorshipEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  student   Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, studentId])
+  @@map("mentorship_event_students")
+}
+
+/// mentorluk_davranis_raporlari
+model MentorshipBehaviorReport {
+  id            Int         @id @default(autoincrement())
+  rosterClassId Int
+  rosterClass   RosterClass @relation(fields: [rosterClassId], references: [id], onDelete: Cascade)
+  studentId     Int
+  student       Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  date          String
+  type          String
+  behavior      String?
+  description   String?
+  level         String?
+  teacherNote   String?
+  createdAt     DateTime    @default(now())
+
+  @@index([studentId])
+  @@map("mentorship_behavior_reports")
+}
+
+/// mentorluk_notlar
+model MentorshipNote {
+  id            Int         @id @default(autoincrement())
+  rosterClassId Int
+  rosterClass   RosterClass @relation(fields: [rosterClassId], references: [id], onDelete: Cascade)
+  studentId     Int
+  student       Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  text          String
+  createdAt     DateTime    @default(now())
+
+  @@index([studentId])
+  @@map("mentorship_notes")
+}
+
+/// bildirimler
+model Notification {
+  id            Int                @id @default(autoincrement())
+  recipientRole AppRole
+  recipientId   Int                @default(0)
+  title         String
+  body          String             @default("")
+  type          String
+  referenceType String?
+  referenceId   Int?
+  createdAt     DateTime           @default(now())
+  readAt        DateTime?
+  status        NotificationStatus @default(unread)
+  dedupKey      String             @unique
+
+  @@index([recipientRole, recipientId])
+  @@map("notifications")
+}

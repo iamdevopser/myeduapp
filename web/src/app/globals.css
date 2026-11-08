@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-navy: #0d2344;
+  --color-navy-2: #1a2b4b;
+  --color-brand: #2563eb;
+  --color-accent: #6d5bd0;
+  --font-sans: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #f1f5f9;
+  color: #0f172a;
+  font-family: var(--font-sans);
+}
+
+html.dark body {
+  background: #0b1220;
+  color: #f1f5f9;
+}
+
+:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
